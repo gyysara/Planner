@@ -1,0 +1,15 @@
+{
+  "name": "planner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Планнер задач для аккаунт- и гейм-менеджеров",
+  "main": "server/index.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

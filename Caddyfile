@@ -1,0 +1,12 @@
+{$DOMAIN} {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
+	request_body {
+		max_size 6MB
+	}
+	reverse_proxy app:3000
+}

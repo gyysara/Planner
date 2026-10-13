@@ -36,3 +36,13 @@ test('перевод даты и времени пояса в UTC', () => {
   assert.equal(D.toInstant('2026-10-18', '15:00', TZ), '2026-10-18T12:00:00.000Z');
   assert.equal(D.toInstant('2026-10-13', '00:30', TZ), '2026-10-12T21:30:00.000Z');
 });
+
+test('даты повторений', () => {
+  const a = D.toInstant('2026-01-31', '15:00', TZ);
+  assert.equal(D.dayKey(D.occurrence(a, 'daily', 1, TZ), TZ), '2026-02-01');
+  assert.equal(D.dayKey(D.occurrence(a, 'weekly', 1, TZ), TZ), '2026-02-07');
+  assert.equal(D.dayKey(D.occurrence(a, 'biweekly', 2, TZ), TZ), '2026-02-28');
+  assert.equal(D.dayKey(D.occurrence(a, 'monthly', 1, TZ), TZ), '2026-02-28', '31-е → последний день февраля');
+  assert.equal(D.dayKey(D.occurrence(a, 'monthly', 2, TZ), TZ), '2026-03-31', 'дальше снова 31-е');
+  assert.equal(D.zoned(D.occurrence(a, 'monthly', 5, TZ), TZ).hour, 15, 'время сохраняется');
+});

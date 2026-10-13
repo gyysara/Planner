@@ -49,6 +49,21 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS tasks_team ON tasks(team_id, deadline);
+-- Повторяющиеся задачи: правило серии; каждое повторение — отдельная запись в tasks
+CREATE TABLE IF NOT EXISTS task_series (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  team_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  repeat TEXT NOT NULL CHECK (repeat IN ('daily', 'weekly', 'biweekly', 'monthly')),
+  anchor TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  assignee_id INTEGER NOT NULL REFERENCES users(id),
+  author_id INTEGER NOT NULL REFERENCES users(id),
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  next_index INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
 CREATE TABLE IF NOT EXISTS reminders_sent (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -75,6 +90,7 @@ const MIGRATIONS = [
   ['users', 'tg_token_enc', 'TEXT'],
   ['users', 'tg_token_hash', 'TEXT'],
   ['users', 'tg_bot_username', 'TEXT'],
+  ['tasks', 'series_id', 'INTEGER REFERENCES task_series(id) ON DELETE SET NULL'],
 ];
 
 function migrate(db) {

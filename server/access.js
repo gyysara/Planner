@@ -4,11 +4,12 @@
 const TASK_SELECT = `
 SELECT t.*, p.name AS project_name, p.color AS project_color,
        a.name AS assignee_name, a.avatar AS assignee_avatar, a.role AS assignee_role,
-       au.name AS author_name
+       au.name AS author_name, s.repeat AS series_repeat, s.active AS series_active
 FROM tasks t
 JOIN projects p ON p.id = t.project_id
 JOIN users a ON a.id = t.assignee_id
-JOIN users au ON au.id = t.author_id`;
+JOIN users au ON au.id = t.author_id
+LEFT JOIN task_series s ON s.id = t.series_id`;
 
 // Условие видимости задач для пользователя: [sql, params]
 function visibilityWhere(user) {

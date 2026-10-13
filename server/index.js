@@ -6,6 +6,7 @@ const { createAuth } = require('./auth');
 const { createUploads } = require('./uploads');
 const { createTelegram } = require('./telegram');
 const { createNotifier } = require('./notify');
+const { createSeries } = require('./series');
 const { loadSecret, createCipher } = require('./secret');
 const { HttpError } = require('./util');
 const { meRouter } = require('./routes/me');
@@ -43,7 +44,8 @@ function createApp(overrides = {}) {
   const telegram = createTelegram({ db, cipher: secret ? createCipher(secret) : null, fetchImpl: overrides.telegramFetch, polling: !overrides.telegramFetch });
   const notifier = createNotifier({ db, config, telegram });
   const auth = createAuth({ db, config });
-  const deps = { db, config, uploads, telegram, notifier };
+  const series = createSeries({ db, config });
+  const deps = { db, config, uploads, telegram, notifier, series };
 
   const app = express();
   app.disable('x-powered-by');
@@ -77,14 +79,17 @@ function createApp(overrides = {}) {
     res.status(status).json({ error: message });
   });
 
-  return { app, db, config, notifier, telegram };
+  return { app, db, config, notifier, telegram, series };
 }
 
 if (require.main === module) {
-  const { app, config, notifier, telegram } = createApp();
+  const { app, config, notifier, telegram, series } = createApp();
   if (!config.inviteCode) console.warn('ВНИМАНИЕ: INVITE_CODE не задан — регистрация закрыта.');
   telegram.start();
   notifier.start();
+  // Повторяющиеся задачи достраиваются заранее (раз в час), чтобы для них приходили напоминания
+  series.ensure();
+  setInterval(() => { try { series.ensure(); } catch (e) { console.error(e); } }, 3600000);
   app.listen(config.port, () => console.log(`Планнер запущен на порту ${config.port}`));
 }
 

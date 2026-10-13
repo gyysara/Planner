@@ -5,7 +5,7 @@
   'use strict';
   const D = window.Deadline;
   const TZ = 'Europe/Minsk';
-  const KEY = 'planner.demo.v1';
+  const KEY = 'planner.demo.v2';
   const REMINDER_DAYS = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
   const SOUNDS = [
     ['alarm-classic.wav', 'Классический будильник'], ['chime.wav', 'Колокольчик'], ['jackpot.wav', 'Джекпот'], ['neon.wav', 'Неон'],
@@ -42,7 +42,7 @@
         id, teamId: 1, title, description, deadline: at(n), assigneeId: 2, authorId: 1, projectId, status,
         result: '', completedAt: null, createdAt: iso(),
       })),
-      notifications: [],
+      notifications: [], series: [],
     };
     s.tasks.push({
       id: 26, teamId: 1, title: 'Отчёт по прошлому турниру', description: 'Свести итоги турнира',
@@ -53,6 +53,8 @@
       id: 27, teamId: 1, title: 'Созвон с TestGames', description: 'Личная задача аккаунт-менеджера',
       deadline: at(3, '11:30'), assigneeId: 1, authorId: 1, projectId: 11, status: 'new', result: '', completedAt: null, createdAt: iso(),
     });
+    s.series.push({ id: 40, teamId: 1, repeat: 'weekly', anchor: at(3, '10:00'), title: 'Еженедельный отчёт по провайдерам',
+      description: 'Собрать статусы провайдеров за неделю. Шаблон: https://example.com/report-template', assigneeId: 2, authorId: 1, projectId: 10, nextIndex: 0, active: true });
     s.notifications.push({ id: 30, userId: 2, taskId: 25, kind: 'created', read: false, createdAt: iso(),
       message: '🆕 Вам новая задача от Тестовый Аккаунт: «Локальный турнир Альфа»\nПроект: Проект Альфа\nИсполнитель: Иван Тестов' });
     return s;
@@ -94,6 +96,7 @@
     return {
       id: t.id, title: t.title, description: t.description, deadline: t.deadline, status: t.status, result: t.result,
       completedAt: t.completedAt, createdAt: t.createdAt,
+      repeat: seriesOf(t) ? seriesOf(t).repeat : null,
       project: { id: t.projectId, name: p.name, color: p.color },
       assignee: { id: t.assigneeId, name: a.name, avatar: a.avatar || DEFAULT_AVATAR },
       author: { id: t.authorId, name: au.name },
@@ -142,6 +145,26 @@
   const toId = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : null; };
   const cleanTitle = (v) => { const s = String(v || '').trim(); if (!s || s.length > 200) throw new HttpError(400, 'Название задачи: от 1 до 200 символов'); return s; };
   const parseDeadline = (v) => { const d = new Date(v); if (!v || Number.isNaN(d.getTime())) throw new HttpError(400, 'Укажите дату и время дедлайна'); return d.toISOString(); };
+  // Повторяющиеся задачи (как server/series.js): повторения создаются заранее обычными задачами
+  function extendSeries(sr, untilIso) {
+    for (let guard = 0; guard < 500; guard++) {
+      const deadline = D.occurrence(sr.anchor, sr.repeat, sr.nextIndex, TZ);
+      if (sr.nextIndex > 0 && deadline > untilIso) break;
+      db.tasks.push({ id: nextId(), teamId: sr.teamId, title: sr.title, description: sr.description, deadline,
+        assigneeId: sr.assigneeId, authorId: sr.authorId, projectId: sr.projectId, status: 'new', result: '',
+        completedAt: null, createdAt: iso(), seriesId: sr.id });
+      sr.nextIndex++;
+    }
+  }
+  function ensureSeries(teamId, toIso) {
+    const min = new Date(Date.now() + 60 * 86400000).toISOString();
+    const max = new Date(Date.now() + 366 * 86400000).toISOString();
+    let until = toIso && toIso > min ? toIso : min;
+    if (until > max) until = max;
+    (db.series || []).filter((x) => x.active && x.teamId === teamId).forEach((x) => extendSeries(x, until));
+  }
+  const seriesOf = (t) => (t.seriesId ? (db.series || []).find((x) => x.id === t.seriesId && x.active) : null);
+
   const projectJson = (p) => ({ id: p.id, name: p.name, color: p.color, memberIds: p.memberIds, taskCount: db.tasks.filter((t) => t.projectId === p.id).length });
 
   function route(method, path, query, body, user) {
@@ -252,6 +275,7 @@
       if (method === 'DELETE') {
         db.projects = db.projects.filter((v) => v !== p);
         db.tasks = db.tasks.filter((t) => t.projectId !== p.id);
+        db.series = (db.series || []).filter((x) => x.projectId !== p.id);
         return { ok: true };
       }
     }
@@ -265,6 +289,7 @@
     }
     if (method === 'GET' && path === '/api/tasks') {
       const from = query.get('from'), to = query.get('to');
+      if (user.teamId) ensureSeries(user.teamId, to);
       return { tasks: visibleTasks(user).filter((t) => (!from || t.deadline >= from) && (!to || t.deadline < to)).map((t) => taskJson(t, user)) };
     }
     const checkAssignee = (id) => {
@@ -282,7 +307,16 @@
       };
       checkAssignee(t.assigneeId);
       checkProject(t.projectId);
-      db.tasks.push(t);
+      const repeat = body.repeat || 'none';
+      if (repeat !== 'none' && !D.REPEATS.includes(repeat)) throw new HttpError(400, 'Неизвестный вариант повторения');
+      if (repeat !== 'none') {
+        const sr = { id: nextId(), teamId: t.teamId, repeat, anchor: t.deadline, title: t.title, description: t.description,
+          assigneeId: t.assigneeId, authorId: t.authorId, projectId: t.projectId, nextIndex: 1, active: true };
+        (db.series ||= []).push(sr);
+        t.seriesId = sr.id;
+        db.tasks.push(t);
+        ensureSeries(t.teamId);
+      } else db.tasks.push(t);
       const a = userById(t.assigneeId);
       if (a.id !== user.id && a.notifyOnCreate) deliver(a, t, 'created', `🆕 Вам новая задача от ${user.name}: ${line(t)}`);
       return { task: taskJson(t, user) };
@@ -295,6 +329,14 @@
         if (t.authorId !== user.id) throw new HttpError(403, 'Удалить задачу может только её автор');
         db.tasks = db.tasks.filter((v) => v !== t);
         return { ok: true };
+      }
+      if (method === 'PATCH' && body.stopRepeat) {
+        if (t.authorId !== user.id) throw new HttpError(403, 'Остановить повторение может только автор задачи');
+        const sr = seriesOf(t);
+        if (!sr) throw new HttpError(400, 'Это не повторяющаяся задача');
+        sr.active = false;
+        db.tasks = db.tasks.filter((v) => !(v.seriesId === sr.id && v.deadline > t.deadline && v.status !== 'done'));
+        return { task: taskJson(t, user) };
       }
       if (method === 'PATCH') {
         const next = { ...t };

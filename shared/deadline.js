@@ -71,5 +71,24 @@
     return new Date(t).toISOString();
   }
 
-  return { zoned, dayKey, addDays, diffDays, mondayOf, daysLeft, borderStage, toInstant };
+  // Повторяющиеся задачи: n-е повторение (n = 0 — первое) от исходного дедлайна.
+  // Раз в месяц — то же число; если в месяце его нет (31-е), берётся последний день месяца.
+  const REPEATS = ['daily', 'weekly', 'biweekly', 'monthly'];
+  function occurrence(anchorIso, repeat, n, tz) {
+    const z = zoned(anchorIso, tz);
+    const time = `${String(z.hour).padStart(2, '0')}:${String(z.minute).padStart(2, '0')}`;
+    let key;
+    if (repeat === 'daily') key = addDays(z.key, n);
+    else if (repeat === 'weekly') key = addDays(z.key, 7 * n);
+    else if (repeat === 'biweekly') key = addDays(z.key, 14 * n);
+    else if (repeat === 'monthly') {
+      const [y, m, d] = z.key.split('-').map(Number);
+      const first = new Date(Date.UTC(y, m - 1 + n, 1));
+      const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+      key = `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, lastDay)).padStart(2, '0')}`;
+    } else throw new Error('unknown repeat');
+    return toInstant(key, time, tz);
+  }
+
+  return { zoned, dayKey, addDays, diffDays, mondayOf, daysLeft, borderStage, toInstant, REPEATS, occurrence };
 });

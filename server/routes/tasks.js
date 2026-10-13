@@ -17,6 +17,7 @@ function taskJson(t, user) {
     project: { id: t.project_id, name: t.project_name, color: t.project_color },
     assignee: { id: t.assignee_id, name: t.assignee_name, avatar: t.assignee_avatar ? `/files/${t.assignee_avatar}` : '/assets/img/avatar-default.svg' },
     author: { id: t.author_id, name: t.author_name },
+    repeat: t.series_id && t.series_active ? t.series_repeat : null,
     canEdit: access.canEditTask(user, t),
     canChangeStatus: access.canChangeStatus(user, t),
   };
@@ -28,7 +29,9 @@ function parseDeadline(v) {
   return d.toISOString();
 }
 
-function tasksRouter({ db, notifier }) {
+const REPEAT_VALUES = ['none', ...require('../../shared/deadline').REPEATS];
+
+function tasksRouter({ db, notifier, series }) {
   const r = express.Router();
 
   const checkAssignee = (user, id) => {
@@ -57,6 +60,7 @@ function tasksRouter({ db, notifier }) {
   r.get('/tasks', (req, res) => {
     const from = req.query.from ? parseDeadline(req.query.from) : undefined;
     const to = req.query.to ? parseDeadline(req.query.to) : undefined;
+    if (req.user.team_id) series.ensure({ teamId: req.user.team_id, toIso: to });
     res.json({ tasks: access.listVisibleTasks(db, req.user, { from, to }).map((t) => taskJson(t, req.user)) });
   });
 
@@ -73,11 +77,20 @@ function tasksRouter({ db, notifier }) {
     const deadline = parseDeadline(b.deadline);
     const assigneeId = toId(b.assigneeId) || req.user.id;
     const projectId = toId(b.projectId);
+    const repeat = b.repeat || 'none';
+    if (!REPEAT_VALUES.includes(repeat)) throw new HttpError(400, 'Неизвестный вариант повторения');
     checkAssignee(req.user, assigneeId);
     checkProject(req.user, projectId);
-    const info = db.prepare(`INSERT INTO tasks (team_id, title, description, deadline, assignee_id, author_id, project_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.user.team_id, title, cleanDesc(b.description), deadline, assigneeId, req.user.id, projectId);
-    const id = Number(info.lastInsertRowid);
+    let id;
+    if (repeat === 'none') {
+      const info = db.prepare(`INSERT INTO tasks (team_id, title, description, deadline, assignee_id, author_id, project_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.user.team_id, title, cleanDesc(b.description), deadline, assigneeId, req.user.id, projectId);
+      id = Number(info.lastInsertRowid);
+    } else {
+      // Уведомление о новой задаче — один раз на всю серию
+      id = series.create({ teamId: req.user.team_id, repeat, anchor: deadline, title, description: cleanDesc(b.description),
+        assigneeId, authorId: req.user.id, projectId });
+    }
     notifier.taskCreated(id);
     res.status(201).json({ task: taskJson(access.getVisibleTask(db, req.user, id), req.user) });
   });
@@ -86,6 +99,14 @@ function tasksRouter({ db, notifier }) {
     const t = access.getVisibleTask(db, req.user, toId(req.params.id));
     if (!t) throw new HttpError(404, 'Задача не найдена');
     const b = req.body || {};
+    // Прекратить повторение (только автор): будущие незавершённые повторения удаляются
+    if (b.stopRepeat) {
+      if (!access.canEditTask(req.user, t)) throw new HttpError(403, 'Остановить повторение может только автор задачи');
+      if (!t.series_id) throw new HttpError(400, 'Это не повторяющаяся задача');
+      const removed = series.stop(t.series_id, t.deadline);
+      const updated = access.getVisibleTask(db, req.user, t.id);
+      return res.json({ task: updated ? taskJson(updated, req.user) : null, removed });
+    }
     const next = { title: t.title, description: t.description, deadline: t.deadline, assignee_id: t.assignee_id,
       project_id: t.project_id, status: t.status, result: t.result, completed_at: t.completed_at };
 

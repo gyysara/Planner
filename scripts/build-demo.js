@@ -21,7 +21,7 @@ const css = fs.readFileSync(path.join(root, 'public/styles.css'), 'utf8').replac
   max-width: calc(100vw - 32px); padding: 8px 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--accent-line);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .45); font-size: 12px;
 }
-.demo-bar b { font-family: var(--font-mono); color: var(--coral); letter-spacing: 1px; }
+.demo-bar b { font-family: var(--font-wide); color: var(--accent); }
 .demo-bar span { color: var(--muted); }
 `;
 fs.writeFileSync(path.join(out, 'styles.css'), css);

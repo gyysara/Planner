@@ -242,3 +242,54 @@ test('безопасность: вход, индексация, CSRF', async (t)
   assert.equal((await anon.post('/api/auth/login', { login: 'test-am2', password: 'wrong-pass' })).status, 401);
   assert.equal((await anon.post('/api/auth/login', { login: 'test-am2', password: 'test-password-1' })).status, 200);
 });
+
+test('повторяющиеся задачи', async (t) => {
+  const s = setup();
+  t.after(() => { s.telegram.stop(); s.server.close(); fs.rmSync(s.dir, { recursive: true, force: true }); });
+  const am = client(s.base);
+  const gm = client(s.base);
+  await register(am, 'Тестовый Аккаунт', 'test-am4', 'am');
+  const gmId = (await register(gm, 'Иван Тестов', 'ivan-test4', 'gm')).body.user.id;
+  await am.post('/api/team', { login: 'ivan-test4' });
+  await gm.patch('/api/me/settings', { notifyOnCreate: true });
+  const proj = (await am.post('/api/projects', { name: 'Проект Альфа', color: '#8b5cf6', memberIds: [gmId] })).body.project;
+
+  assert.equal((await am.post('/api/tasks', { title: 'x', deadline: daysFromNow(1), assigneeId: gmId, projectId: proj.id, repeat: 'yearly' })).status, 400);
+  const first = await am.post('/api/tasks', { title: 'Еженедельный отчёт TestGames', deadline: daysFromNow(1), assigneeId: gmId, projectId: proj.id, repeat: 'weekly' });
+  assert.equal(first.status, 201);
+  assert.equal(first.body.task.repeat, 'weekly');
+
+  const range = (days) => `/api/tasks?from=${encodeURIComponent(new Date().toISOString())}&to=${encodeURIComponent(daysFromNow(days))}`;
+  let list = (await gm.get(range(60))).body.tasks.filter((x) => x.title === 'Еженедельный отчёт TestGames');
+  assert.ok(list.length >= 8 && list.length <= 9, `повторения на 60 дней вперёд: ${list.length}`);
+  const gaps = list.slice(1).map((x, i) => Math.round((Date.parse(x.deadline) - Date.parse(list[i].deadline)) / 86400000));
+  assert.ok(gaps.every((g) => g === 7), 'раз в неделю');
+  assert.equal((await gm.get('/api/notifications/unread')).body.notifications.length, 1, 'одно уведомление на всю серию');
+
+  // Календарь открыт на полгода вперёд — повторения достраиваются
+  const far = (await gm.get(range(200))).body.tasks.filter((x) => x.title === 'Еженедельный отчёт TestGames');
+  assert.ok(far.length >= 28, `на 200 дней: ${far.length}`);
+
+  // Каждое повторение — своя задача: завершение одного не трогает остальные
+  await gm.patch(`/api/tasks/${list[0].id}`, { status: 'done', result: 'Отчёт отправлен' });
+  assert.equal((await gm.get(`/api/tasks/${list[1].id}`)).body.task.status, 'new');
+
+  // Остановить повторение может только автор; будущие повторения после выбранного удаляются
+  assert.equal((await gm.patch(`/api/tasks/${list[2].id}`, { stopRepeat: true })).status, 403);
+  const stop = await am.patch(`/api/tasks/${list[2].id}`, { stopRepeat: true });
+  assert.equal(stop.status, 200);
+  assert.equal(stop.body.task.repeat, null);
+  const after = (await gm.get(range(200))).body.tasks.filter((x) => x.title === 'Еженедельный отчёт TestGames');
+  assert.equal(after.length, 3, 'остались первые три');
+  assert.equal(after[0].status, 'done');
+
+  // Раз в месяц и каждый день
+  const daily = await am.post('/api/tasks', { title: 'Проверка лобби', deadline: daysFromNow(0.5), assigneeId: gmId, projectId: proj.id, repeat: 'daily' });
+  assert.equal(daily.status, 201);
+  const d = (await am.get(range(10))).body.tasks.filter((x) => x.title === 'Проверка лобби');
+  assert.ok(d.length >= 9 && d.length <= 11);
+  const monthly = await am.post('/api/tasks', { title: 'Сверка за месяц', deadline: daysFromNow(2), assigneeId: gmId, projectId: proj.id, repeat: 'monthly' });
+  assert.equal(monthly.status, 201);
+  const m = (await am.get(range(100))).body.tasks.filter((x) => x.title === 'Сверка за месяц');
+  assert.ok(m.length >= 3 && m.length <= 4);
+});

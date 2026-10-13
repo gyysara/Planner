@@ -14,6 +14,7 @@
   };
 
   const STATUS = { new: 'Новая', in_progress: 'В работе', done: 'Завершено' };
+  const REPEAT = { none: 'Не повторять', daily: 'Каждый день', weekly: 'Раз в неделю', biweekly: 'Раз в две недели', monthly: 'Раз в месяц' };
   const PALETTE = [
     ['#8b5cf6', 'Фиолетовый'], ['#3b82f6', 'Синий'], ['#06b6d4', 'Бирюзовый'], ['#14b8a6', 'Морская волна'],
     ['#22c55e', 'Зелёный'], ['#ec4899', 'Розовый'], ['#f97316', 'Оранжевый'], ['#64748b', 'Сланцевый'],
@@ -41,6 +42,24 @@
       node.append(c instanceof Node ? c : document.createTextNode(String(c)));
     }
     return node;
+  }
+
+  // Текст со ссылками: http(s)://… и www.… становятся активными ссылками (открываются в новой вкладке)
+  const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"«»]+/gi;
+  function linkify(text) {
+    const out = [];
+    let last = 0;
+    for (const m of String(text || '').matchAll(URL_RE)) {
+      let url = m[0];
+      const trail = url.match(/[.,;:!?)\]]+$/); // знаки препинания в конце — не часть ссылки
+      if (trail) url = url.slice(0, -trail[0].length);
+      if (m.index > last) out.push(text.slice(last, m.index));
+      const href = url.toLowerCase().startsWith('www.') ? 'https://' + url : url;
+      out.push(el('a', { href, target: '_blank', rel: 'noopener noreferrer' }, url));
+      last = m.index + url.length;
+    }
+    if (last < String(text || '').length) out.push(String(text).slice(last));
+    return out;
   }
 
   // ---------- API ----------
@@ -96,7 +115,7 @@
       el('button', { class: 'btn-primary', type: 'submit', style: { width: '100%' } }, isReg ? 'Зарегистрироваться' : 'Войти'));
 
     $app.append(el('div', { class: 'auth' }, el('div', { class: 'auth-box' },
-      el('div', { class: 'logo' }, '♠ TASK ', el('span', {}, 'PLANNER')),
+      el('div', { class: 'logo' }, 'TASK ', el('span', {}, 'PLANNER')),
       el('div', { class: 'muted' }, 'Задачи аккаунт- и гейм-менеджеров'),
       el('div', { class: 'tabs' },
         el('button', { type: 'button', class: !isReg ? 'active' : '', onclick: () => renderAuth('login') }, 'Вход'),
@@ -130,10 +149,12 @@
 
   function renderShell() {
     const r = ROUTES[route()] ? route() : 'calendar';
-    const main = el('main', { id: 'main' });
+    // Плавное появление страницы — только при переходе на другую страницу, не при обновлении данных
+    const main = el('main', { id: 'main', class: state.lastRoute !== r ? 'page-enter' : '' });
+    state.lastRoute = r;
     $app.replaceChildren(
       el('header', { class: 'topbar' },
-        el('div', { class: 'logo' }, '♠ TASK ', el('span', {}, 'PLANNER')),
+        el('div', { class: 'logo' }, 'TASK ', el('span', {}, 'PLANNER')),
         el('nav', { class: 'nav' }, Object.entries(ROUTES).map(([k, title]) => el('a', { href: '#/' + k, class: k === r ? 'active' : '' }, title))),
         el('div', { class: 'me' },
           el('img', { class: 'avatar', src: state.me.avatar, alt: '' }),
@@ -182,15 +203,20 @@
       : capitalize(fmtKey(state.cursor, { month: 'long', year: 'numeric' }).replace(' г.', ''));
     const shift = (dir) => {
       state.cursor = state.view === 'week' ? D.addDays(state.cursor, 7 * dir) : shiftMonth(state.cursor, dir);
+      state.slide = dir > 0 ? 'next' : 'prev';
       renderShell();
     };
-    const setView = (v) => { state.view = v; localStorageSet('view', v); renderShell(); };
+    const setView = (v) => { state.view = v; localStorageSet('view', v); state.slide = 'fade'; renderShell(); };
+    const t0 = today();
+    const isCurrent = state.view === 'week' ? D.mondayOf(state.cursor) === D.mondayOf(t0) : state.cursor.slice(0, 7) === t0.slice(0, 7);
+    const unit = state.view === 'week' ? 'неделя' : 'месяц';
 
     main.append(el('div', { class: 'toolbar' },
-      el('button', { onclick: () => shift(-1), 'aria-label': 'Назад' }, '‹'),
-      el('button', { onclick: () => { state.cursor = today(); renderShell(); } }, 'Сегодня'),
-      el('button', { onclick: () => shift(1), 'aria-label': 'Вперёд' }, '›'),
-      el('h1', {}, title),
+      el('div', { class: 'period' },
+        el('button', { class: 'period-arrow', onclick: () => shift(-1), 'aria-label': state.view === 'week' ? 'Предыдущая неделя' : 'Предыдущий месяц' }, '‹'),
+        el('h1', { class: 'period-title' }, title),
+        el('button', { class: 'period-arrow', onclick: () => shift(1), 'aria-label': state.view === 'week' ? 'Следующая неделя' : 'Следующий месяц' }, '›')),
+      !isCurrent && el('button', { class: 'btn-small btn-link', onclick: () => { state.cursor = t0; state.slide = 'fade'; renderShell(); } }, `К текущему: ${unit === 'неделя' ? 'эта неделя' : 'этот месяц'}`),
       el('div', { class: 'seg', role: 'group', 'aria-label': 'Вид календаря' },
         el('button', { class: state.view === 'month' ? 'active' : '', onclick: () => setView('month') }, 'Месяц'),
         el('button', { class: state.view === 'week' ? 'active' : '', onclick: () => setView('week') }, 'Неделя')),
@@ -203,7 +229,9 @@
     const holder = el('div', {}, el('div', { class: 'muted' }, 'Загрузка…'));
     main.append(holder);
     try { await loadTasks(); } catch (e) { holder.replaceChildren(el('div', { class: 'error' }, e.message)); return; }
-    holder.replaceChildren(state.view === 'week' ? weekGrid() : monthGrid());
+    const grid = state.view === 'week' ? weekGrid() : monthGrid();
+    if (state.slide) { grid.classList.add('slide-' + state.slide); state.slide = null; }
+    holder.replaceChildren(grid);
     if (state.view === 'week') {
       const body = holder.querySelector('.week-body');
       if (body) body.scrollTop = 8 * 58; // начинаем с 08:00
@@ -282,7 +310,7 @@
     },
     stage === 'overdue' && el('span', { class: 'warn', 'aria-label': 'Просрочено' }, '⚠'),
     stage === 'red' && el('span', { class: 'warn soon', 'aria-label': 'До дедлайна 2 дня или меньше' }, '⚠'),
-    el('div', { class: 'tag' }, t.project.name),
+    el('div', { class: 'tag' }, t.project.name, t.repeat && el('span', { class: 'rep', title: REPEAT[t.repeat], 'aria-label': REPEAT[t.repeat] }, '↻')),
     el('div', { class: 't' }, el('span', { class: 'time' }, fmtTime(t.deadline) + ' '), t.title),
     el('div', { class: 'who' }, el('img', { class: 'avatar sm', src: t.assignee.avatar, alt: '' }), t.assignee.name));
   }
@@ -324,6 +352,10 @@
           assignees.map((u) => el('option', { value: u.id, selected: editing ? u.id === task.assignee.id : u.id === state.me.id }, u.id === state.me.id ? `${u.name} (я)` : u.name)))),
         el('label', {}, 'Проект', el('select', { name: 'projectId', required: true },
           projects.map((p) => el('option', { value: p.id, selected: editing && p.id === task.project.id }, p.name))))),
+      editing
+        ? task.repeat && el('div', { class: 'muted', style: { marginBottom: '8px' } }, `↻ ${REPEAT[task.repeat]}. Изменения коснутся только этого повторения.`)
+        : el('label', {}, 'Повторять', el('select', { name: 'repeat' },
+          Object.entries(REPEAT).map(([k, v]) => el('option', { value: k }, v)))),
       state.me.role === 'gm' && el('div', { class: 'muted', style: { marginBottom: '8px' } }, 'Гейм-менеджер может поставить задачу только себе.'),
       err,
       el('div', { class: 'actions' },
@@ -338,6 +370,7 @@
         title: f.get('title'), description: f.get('description'),
         deadline: D.toInstant(f.get('date'), f.get('time'), state.tz),
         assigneeId: Number(f.get('assigneeId') || form.assigneeId.value), projectId: Number(f.get('projectId')),
+        ...(editing ? {} : { repeat: f.get('repeat') || 'none' }),
       };
       try {
         if (editing) await api('PATCH', `/api/tasks/${task.id}`, body);
@@ -361,6 +394,14 @@
       Object.entries(STATUS).map(([k, v]) => el('option', { value: k, selected: k === task.status }, v)));
     const result = el('textarea', { name: 'result', maxlength: 5000, value: task.result, disabled: !task.canChangeStatus, placeholder: 'Что сделано, договорённости, ссылки…' });
     const resultLabel = el('label', {}, 'Результат', result);
+    // Ссылки из результата — кликабельные (в самом поле ввода ссылки не нажимаются)
+    const resultLinks = el('div', { class: 'links-preview' });
+    const syncLinks = () => {
+      const links = linkify(result.value).filter((n) => n instanceof Node);
+      resultLinks.replaceChildren(...(links.length ? [el('span', { class: 'muted' }, 'Ссылки: '), ...links.flatMap((a, i) => (i ? [', ', a] : [a]))] : []));
+    };
+    result.addEventListener('input', syncLinks);
+    syncLinks();
     function syncResult() {
       const done = statusSel.value === 'done';
       result.required = done;
@@ -374,11 +415,14 @@
         el('dt', {}, 'Исполнитель'), el('dd', {}, el('img', { class: 'avatar', src: task.assignee.avatar, alt: '' }), task.assignee.name),
         el('dt', {}, 'Автор'), el('dd', {}, task.author.name),
         el('dt', {}, 'Дедлайн'), el('dd', {}, fmtDateTime(task.deadline), dueText && el('span', { class: `due-badge due-${stage}` }, dueText)),
+        task.repeat && [el('dt', {}, 'Повтор'), el('dd', {}, '↻ ' + REPEAT[task.repeat],
+          task.canEdit && el('button', { type: 'button', class: 'btn-small btn-link', onclick: stopRepeat }, 'Прекратить повторение'))],
         task.completedAt && [el('dt', {}, 'Завершена'), el('dd', {}, fmtDateTime(task.completedAt))]),
-      task.description && el('div', { class: 'desc' }, task.description),
+      task.description && el('div', { class: 'desc' }, linkify(task.description)),
       el('form', { onsubmit: save, style: { marginTop: '16px' } },
         el('label', {}, 'Статус', statusSel),
         resultLabel,
+        resultLinks,
         err,
         el('div', { class: 'actions' },
           task.canEdit && el('button', { type: 'button', class: 'btn-danger left', onclick: remove }, 'Удалить'),
@@ -393,6 +437,10 @@
         renderShell();
         pollNotifications();
       } catch (e2) { err.textContent = e2.message; }
+    }
+    async function stopRepeat() {
+      if (!confirm(`Прекратить повторение «${task.title}»? Будущие повторения после этой задачи будут удалены, эта и прошлые останутся.`)) return;
+      try { await api('PATCH', `/api/tasks/${task.id}`, { stopRepeat: true }); close(); renderShell(); } catch (e2) { err.textContent = e2.message; }
     }
     async function remove() {
       if (!confirm(`Удалить задачу «${task.title}»? Восстановить её будет нельзя.`)) return;
@@ -524,7 +572,7 @@
       el('h2', {}, 'Завершённые задачи'),
       rep.completed.length ? el('div', { class: 'list' }, rep.completed.map((t) => el('div', { class: 'report-line', vars: projectVars(t.project.color) },
         el('div', {}, `Отчёт за ${period}: завершена задача «`, el('b', {}, t.title), '»'),
-        el('div', { class: 'res' }, el('span', { class: 'muted' }, 'Результат: '), t.result),
+        el('div', { class: 'res' }, el('span', { class: 'muted' }, 'Результат: '), linkify(t.result)),
         el('div', { class: 'muted', style: { marginTop: '4px', fontSize: '12px' } },
           `${t.project.name} · ${t.assignee.name} · завершена ${fmtDateTime(t.completedAt)} · срок ${fmtDateTime(t.deadline)}`,
           t.completedAt > t.deadline ? ' · ⚠ с опозданием' : ''))))

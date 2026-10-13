@@ -597,7 +597,8 @@
 
   // Когда присылать уведомления — только то, что выбрал сам пользователь
   function notifyPanel(s, hourSel, perm, permText, apply, show) {
-    const DAY_OPTIONS = [[5, 'За 5 дней'], [4, 'За 4 дня'], [3, 'За 3 дня'], [1, 'За 1 день'], [0, 'В день дедлайна']];
+    const plural = (d) => (d === 1 ? 'день' : d < 5 ? 'дня' : 'дней');
+    const DAY_OPTIONS = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((d) => [d, d === 0 ? 'В день дедлайна' : `За ${d} ${plural(d)}`]);
     const hint = el('div', { class: 'muted', style: { marginTop: '8px' } });
     const box = (id, label, checked, onchange) => el('label', { class: 'check-row' },
       el('input', { type: 'checkbox', id, checked, onchange }), el('span', {}, label));
@@ -609,6 +610,38 @@
     const save = async (patch) => {
       try { apply(await api('PATCH', '/api/me/settings', patch)); show('Сохранено', true); updateHint(); } catch (e) { show(e.message); }
     };
+    // Выпадающий список с галочками: можно выбрать несколько дней
+    function daysDropdown() {
+      const summary = el('span', { class: 'dd-summary' });
+      const refresh = () => {
+        const sorted = [...days].sort((a, b) => b - a);
+        if (!sorted.length) { summary.textContent = 'Не выбрано'; return; }
+        const nums = sorted.filter((d) => d > 0);
+        const parts = [];
+        if (nums.length) parts.push(`за ${nums.join(', ')} ${nums.length > 1 ? 'дн.' : plural(nums[0])}`);
+        if (days.has(0)) parts.push('в день дедлайна');
+        summary.textContent = parts.join(' и ').replace(/^./, (c) => c.toUpperCase());
+      };
+      const list = el('div', { class: 'dd-list', role: 'group', 'aria-label': 'Дни напоминаний' },
+        DAY_OPTIONS.map(([d, label]) => el('label', { class: 'dd-item' },
+          el('input', { type: 'checkbox', id: 'n-day-' + d, checked: days.has(d), onchange: (e) => {
+            if (e.target.checked) days.add(d); else days.delete(d);
+            refresh();
+            save({ notifyDays: [...days] });
+          } }), el('span', {}, label))));
+      const dd = el('details', { class: 'dd' },
+        el('summary', { class: 'dd-btn' }, summary, el('span', { class: 'dd-arrow', 'aria-hidden': 'true' }, '▾')),
+        list);
+      // Закрываем список кликом мимо него
+      const outside = (e) => { if (!dd.contains(e.target)) dd.open = false; };
+      dd.addEventListener('toggle', () => {
+        if (dd.open) document.addEventListener('click', outside);
+        else document.removeEventListener('click', outside);
+      });
+      refresh();
+      return dd;
+    }
+
     const panel = el('div', { class: 'panel' },
       el('h2', {}, 'Когда присылать уведомления'),
       el('div', { class: 'muted', style: { marginBottom: '10px' } }, 'Отметьте всё, что нужно. Уведомления приходят всплывающим окном со звуком и в ваш Telegram, если он подключён.'),
@@ -616,10 +649,7 @@
         box('n-create', 'Когда мне ставят задачу', s.notifyOnCreate, (e) => save({ notifyOnCreate: e.target.checked })),
         box('n-done', 'Когда мою задачу завершили', s.notifyOnDone, (e) => save({ notifyOnDone: e.target.checked }))),
       el('div', { class: 'muted', style: { margin: '12px 0 6px' } }, 'Напоминания о дедлайне'),
-      el('div', { class: 'check-group' }, DAY_OPTIONS.map(([d, label]) => box('n-day-' + d, label, days.has(d), (e) => {
-        if (e.target.checked) days.add(d); else days.delete(d);
-        save({ notifyDays: [...days] });
-      }))),
+      daysDropdown(),
       el('label', { style: { marginTop: '12px' } }, `Во сколько присылать напоминания (${state.tz})`, hourSel),
       hint,
       el('div', { style: { marginTop: '10px' } }, `Системные уведомления браузера: ${permText}. `,
@@ -797,6 +827,11 @@
     }
   }
 
-  window.addEventListener('hashchange', () => { if (state.me) renderShell(); });
+  // При переходе между страницами обновляем профиль: привязку к команде мог изменить аккаунт-менеджер
+  window.addEventListener('hashchange', async () => {
+    if (!state.me) return;
+    try { const data = await api('GET', '/api/me'); state.me = data.user; state.settings = data.settings; } catch { /* покажем то, что есть */ }
+    if (state.me) renderShell();
+  });
   boot();
 })();

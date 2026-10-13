@@ -116,7 +116,9 @@ test('сценарий проверки из ТЗ', async (t) => {
   // Гейм-менеджер выбирает: о новых задачах, за 4 дня и за 1 день; подключает свой бот
   const st = await gm.patch('/api/me/settings', { notifyOnCreate: true, notifyDays: [4, 1] });
   assert.deepEqual(st.body.settings.notifyDays, [4, 1]);
-  assert.equal((await gm.patch('/api/me/settings', { notifyDays: [2] })).status, 400);
+  assert.equal((await gm.patch('/api/me/settings', { notifyDays: [11] })).status, 400);
+  assert.deepEqual((await gm.patch('/api/me/settings', { notifyDays: [2, 10, 0] })).body.settings.notifyDays, [10, 2, 0]);
+  await gm.patch('/api/me/settings', { notifyDays: [4, 1] });
   assert.equal((await gm.put('/api/me/telegram', { token: '123:bad' })).status, 400);
   const link = await gm.put('/api/me/telegram', { token: TOKEN_A });
   assert.equal(link.status, 200);

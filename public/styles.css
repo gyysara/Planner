@@ -233,6 +233,23 @@ input[type=color] { width: 40px; height: 32px; border: 1px solid var(--line); ba
 .check-row:has(input:checked) { border-color: var(--gold); background: rgba(212, 175, 55, .07); }
 .check-row input { accent-color: var(--gold); width: 16px; height: 16px; margin: 0; }
 .ok-text { color: var(--ok); }
+.dd { position: relative; }
+.dd-btn {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; color: var(--text);
+}
+.dd-btn::-webkit-details-marker { display: none; }
+.dd-btn:hover, .dd[open] .dd-btn { border-color: var(--gold); }
+.dd-summary { flex: 1; min-width: 0; }
+.dd-arrow { color: var(--muted); transition: transform .15s; }
+.dd[open] .dd-arrow { transform: rotate(180deg); }
+.dd-list {
+  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 320px; overflow-y: auto;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 14px 34px rgba(0, 0, 0, .5);
+}
+.dd-item { margin: 0; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--text); cursor: pointer; }
+.dd-item:hover { background: rgba(255, 255, 255, .05); }
+.dd-item input { accent-color: var(--gold); width: 16px; height: 16px; margin: 0; }
 .tg-link { margin-top: 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
 
 @media (max-width: 900px) {

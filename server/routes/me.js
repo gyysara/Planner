@@ -72,7 +72,7 @@ function meRouter({ db, config, uploads, telegram }) {
     if (notifyOnDone !== undefined) set('notify_on_done', notifyOnDone ? 1 : 0);
     if (notifyDays !== undefined) {
       if (!Array.isArray(notifyDays) || !notifyDays.every((d) => REMINDER_DAYS.includes(d))) {
-        throw new HttpError(400, 'Дни напоминаний: 5, 4, 3, 1 или 0 (день дедлайна)');
+        throw new HttpError(400, 'Дни напоминаний: от 10 до 1 или 0 (день дедлайна)');
       }
       set('notify_days', [...new Set(notifyDays)].sort((a, b) => b - a).join(','));
     }

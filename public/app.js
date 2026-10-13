@@ -240,7 +240,7 @@
         onkeydown: (e) => { if (e.key === 'Enter' && e.target.classList.contains('day')) openTaskForm({ date: key, time: '10:00' }); },
       },
       el('div', { class: 'num' }, Number(key.slice(8))),
-      el('div', { class: 'cards' }, list.map((t) => taskCard(t, true)))));
+      el('div', { class: 'cards' }, list.map((t) => taskCard(t)))));
     }
     return grid;
   }
@@ -266,14 +266,14 @@
           class: `slot${k === t0 ? ' today' : ''}`, role: 'button', tabindex: 0, 'aria-label': `${fmtKey(k, { day: 'numeric', month: 'long' })}, ${hh}:00: новая задача`,
           onclick: (e) => { if (e.target.closest('.card')) return; openTaskForm({ date: k, time: `${hh}:00` }); },
           onkeydown: (e) => { if (e.key === 'Enter' && e.target.classList.contains('slot')) openTaskForm({ date: k, time: `${hh}:00` }); },
-        }, (bySlot[`${k}|${h}`] || []).map((t) => taskCard(t, false))));
+        }, (bySlot[`${k}|${h}`] || []).map((t) => taskCard(t))));
       }
     }
     grid.append(body);
     return grid;
   }
 
-  function taskCard(t, showTime) {
+  function taskCard(t) {
     const stage = D.borderStage(t, new Date(), state.tz);
     return el('div', {
       class: `card due-${stage}${t.status === 'done' ? ' done' : ''}`, vars: { '--pc': t.project.color },
@@ -283,7 +283,7 @@
     stage === 'overdue' && el('span', { class: 'warn', 'aria-label': 'Просрочено' }, '⚠'),
     stage === 'red' && el('span', { class: 'warn soon', 'aria-label': 'До дедлайна 2 дня или меньше' }, '⚠'),
     el('div', { class: 'tag' }, t.project.name),
-    el('div', { class: 't' }, showTime && el('span', { class: 'time' }, fmtTime(t.deadline) + ' '), t.title),
+    el('div', { class: 't' }, el('span', { class: 'time' }, fmtTime(t.deadline) + ' '), t.title),
     el('div', { class: 'who' }, el('img', { class: 'avatar sm', src: t.assignee.avatar, alt: '' }), t.assignee.name));
   }
 

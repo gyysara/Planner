@@ -93,7 +93,7 @@
         el('label', {}, 'Код приглашения', el('input', { type: 'password', name: 'inviteCode', required: true, autocomplete: 'off' })),
       ],
       err,
-      el('button', { class: 'btn-gold', type: 'submit', style: { width: '100%' } }, isReg ? 'Зарегистрироваться' : 'Войти'));
+      el('button', { class: 'btn-primary', type: 'submit', style: { width: '100%' } }, isReg ? 'Зарегистрироваться' : 'Войти'));
 
     $app.append(el('div', { class: 'auth' }, el('div', { class: 'auth-box' },
       el('div', { class: 'logo' }, '♠ TASK ', el('span', {}, 'PLANNER')),
@@ -138,7 +138,7 @@
         el('div', { class: 'me' },
           el('img', { class: 'avatar', src: state.me.avatar, alt: '' }),
           el('div', {}, el('div', {}, state.me.name), el('div', { class: 'muted', style: { fontSize: '12px' } }, state.me.role === 'am' ? 'Аккаунт-менеджер' : 'Гейм-менеджер')),
-          el('button', { class: 'btn-small', onclick: logout }, 'Выйти'))),
+          el('button', { class: 'btn-small btn-logout', onclick: logout }, 'Выйти'))),
       main);
     if (state.me.role === 'gm' && !state.me.teamId) {
       main.append(el('div', { class: 'banner' }, 'Вы ещё не в команде. Сообщите аккаунт-менеджеру свой логин ', el('b', {}, state.me.login), ' — после привязки здесь появятся задачи.'));
@@ -194,7 +194,7 @@
       el('div', { class: 'seg', role: 'group', 'aria-label': 'Вид календаря' },
         el('button', { class: state.view === 'month' ? 'active' : '', onclick: () => setView('month') }, 'Месяц'),
         el('button', { class: state.view === 'week' ? 'active' : '', onclick: () => setView('week') }, 'Неделя')),
-      el('button', { class: 'btn-gold', onclick: () => openTaskForm({ date: state.cursor === today() ? today() : state.cursor, time: '10:00' }) }, '+ Задача'),
+      el('button', { class: 'btn-primary', onclick: () => openTaskForm({ date: state.cursor === today() ? today() : state.cursor, time: '10:00' }) }, '+ Задача'),
       el('div', { class: 'legend' },
         el('span', {}, el('i', { style: { borderColor: 'var(--due-yellow)' } }), '≤ 5 дней'),
         el('span', {}, el('i', { style: { borderColor: 'var(--due-red)' } }), '≤ 2 дней'),
@@ -327,7 +327,7 @@
       err,
       el('div', { class: 'actions' },
         el('button', { type: 'button', onclick: () => close() }, 'Отмена'),
-        el('button', { type: 'submit', class: 'btn-gold' }, editing ? 'Сохранить' : 'Создать задачу')));
+        el('button', { type: 'submit', class: 'btn-primary' }, editing ? 'Сохранить' : 'Создать задачу')));
     const close = modal(editing ? 'Редактирование задачи' : 'Новая задача', form);
 
     async function submit(e) {
@@ -382,7 +382,7 @@
         el('div', { class: 'actions' },
           task.canEdit && el('button', { type: 'button', class: 'btn-danger left', onclick: remove }, 'Удалить'),
           task.canEdit && el('button', { type: 'button', onclick: () => { close(); openTaskForm({ task }); } }, 'Изменить'),
-          task.canChangeStatus && el('button', { type: 'submit', class: 'btn-gold' }, 'Сохранить'))));
+          task.canChangeStatus && el('button', { type: 'submit', class: 'btn-primary' }, 'Сохранить'))));
 
     async function save(e) {
       e.preventDefault();
@@ -453,7 +453,7 @@
         el('img', { class: 'avatar sm', src: g.avatar, alt: '' }), g.name)))
         : el('div', { class: 'muted', style: { margin: '6px 0 12px' } }, 'Сначала добавьте гейм-менеджеров на странице «Команда».'),
       err,
-      el('div', { class: 'actions' }, el('button', { type: 'submit', class: 'btn-gold' }, p ? 'Сохранить' : 'Создать проект')));
+      el('div', { class: 'actions' }, el('button', { type: 'submit', class: 'btn-primary' }, p ? 'Сохранить' : 'Создать проект')));
 
     async function submit(e) {
       e.preventDefault();
@@ -484,7 +484,7 @@
         el('form', { class: 'row', style: { alignItems: 'flex-start' }, onsubmit: async (e) => {
           e.preventDefault();
           try { await api('POST', '/api/team', { login: input.value.trim() }); renderShell(); } catch (e2) { err.textContent = e2.message; }
-        } }, input, el('button', { class: 'btn-gold', type: 'submit', style: { flex: '0 0 auto' } }, 'Привязать')),
+        } }, input, el('button', { class: 'btn-primary', type: 'submit', style: { flex: '0 0 auto' } }, 'Привязать')),
         err));
     }
     main.append(el('div', { class: 'panel' },
@@ -515,9 +515,9 @@
       el('h1', {}, `Отчёт за ${period}`)));
 
     main.append(el('div', { class: 'stats' },
-      el('div', { class: 'stat' }, el('b', {}, rep.stats.completed), 'завершено'),
-      el('div', { class: `stat${rep.stats.lateDone ? ' bad' : ''}` }, el('b', {}, rep.stats.lateDone), 'завершено с опозданием'),
-      el('div', { class: `stat${rep.stats.overdue ? ' bad' : ''}` }, el('b', {}, rep.stats.overdue), 'просрочено и не завершено')));
+      el('div', { class: 'stat' }, el('b', {}, rep.stats.completed), el('span', {}, 'завершено')),
+      el('div', { class: `stat${rep.stats.lateDone ? ' bad' : ''}` }, el('b', {}, rep.stats.lateDone), el('span', {}, 'завершено с опозданием')),
+      el('div', { class: `stat${rep.stats.overdue ? ' bad' : ''}` }, el('b', {}, rep.stats.overdue), el('span', {}, 'просрочено и не завершено'))));
 
     main.append(el('div', { class: 'panel' },
       el('h2', {}, 'Завершённые задачи'),
@@ -648,7 +648,7 @@
       el('div', { class: 'check-group' },
         box('n-create', 'Когда мне ставят задачу', s.notifyOnCreate, (e) => save({ notifyOnCreate: e.target.checked })),
         box('n-done', 'Когда мою задачу завершили', s.notifyOnDone, (e) => save({ notifyOnDone: e.target.checked }))),
-      el('div', { class: 'muted', style: { margin: '12px 0 6px' } }, 'Напоминания о дедлайне'),
+      el('div', { class: 'eyebrow', style: { margin: '14px 0 8px' } }, 'Напоминания о дедлайне'),
       daysDropdown(),
       el('label', { style: { marginTop: '12px' } }, `Во сколько присылать напоминания (${state.tz})`, hourSel),
       hint,
@@ -669,7 +669,7 @@
     }
     const linkBlock = (url) => el('div', { class: 'tg-link' },
       el('div', {}, '1. Откройте бота и нажмите «Start»:'),
-      el('a', { href: url, target: '_blank', rel: 'noopener', class: 'btn btn-gold', style: { display: 'inline-block', marginTop: '6px', textDecoration: 'none' } }, `Открыть @${tg.botUsername || ''}`),
+      el('a', { href: url, target: '_blank', rel: 'noopener', class: 'btn btn-primary', style: { display: 'inline-block', marginTop: '6px', textDecoration: 'none' } }, `Открыть @${tg.botUsername || ''}`),
       el('div', { class: 'muted', style: { marginTop: '6px' } }, '2. Вернитесь сюда и обновите страницу — статус сменится на «подключён».'));
 
     if (tg.botUsername) {
@@ -711,7 +711,7 @@
       } },
       el('label', { for: 'tg-token' }, 'Ключ бота', input),
       err,
-      el('button', { type: 'submit', class: 'btn-gold' }, 'Подключить')));
+      el('button', { type: 'submit', class: 'btn-primary' }, 'Подключить')));
     return panel;
   }
 

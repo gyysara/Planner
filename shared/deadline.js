@@ -1,4 +1,4 @@
-// Расчёт сроков: рамка карточки и стадия напоминания.
+// Расчёт сроков: дни до дедлайна и рамка карточки.
 // Один файл для сервера (require) и браузера (window.Deadline).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -59,17 +59,6 @@
     return 'normal';
   }
 
-  // Стадия напоминания: 5 (за 5 дней), 2 (за 2 дня), 0 (день дедлайна) или null
-  function reminderStage(task, now, tz) {
-    if (task.status === 'done') return null;
-    const d = daysLeft(task.deadline, now, tz);
-    if (d < 0) return null;
-    if (d === 0) return 0;
-    if (d <= 2) return 2;
-    if (d <= 5) return 5;
-    return null;
-  }
-
   // Дата 'YYYY-MM-DD' и время 'HH:MM' в поясе tz → ISO-строка UTC
   function toInstant(key, time, tz) {
     const guess = Date.parse(`${key}T${time}:00Z`);
@@ -82,5 +71,5 @@
     return new Date(t).toISOString();
   }
 
-  return { zoned, dayKey, addDays, diffDays, mondayOf, daysLeft, borderStage, reminderStage, toInstant };
+  return { zoned, dayKey, addDays, diffDays, mondayOf, daysLeft, borderStage, toInstant };
 });

@@ -19,14 +19,10 @@ test('рамка по сроку', () => {
   assert.equal(D.borderStage({ status: 'done', deadline: inDays(1) }, now, TZ), 'none');
 });
 
-test('стадии напоминаний', () => {
-  assert.equal(D.reminderStage({ status: 'new', deadline: inDays(6) }, now, TZ), null);
-  assert.equal(D.reminderStage({ status: 'new', deadline: inDays(5) }, now, TZ), 5);
-  assert.equal(D.reminderStage({ status: 'new', deadline: inDays(3) }, now, TZ), 5);
-  assert.equal(D.reminderStage({ status: 'new', deadline: inDays(2) }, now, TZ), 2);
-  assert.equal(D.reminderStage({ status: 'new', deadline: inDays(0) }, now, TZ), 0);
-  assert.equal(D.reminderStage({ status: 'new', deadline: inDays(-1) }, now, TZ), null);
-  assert.equal(D.reminderStage({ status: 'done', deadline: inDays(1) }, now, TZ), null);
+test('дни до дедлайна', () => {
+  assert.equal(D.daysLeft(inDays(5), now, TZ), 5);
+  assert.equal(D.daysLeft(inDays(0, 23), now, TZ), 0);
+  assert.equal(D.daysLeft(inDays(-1), now, TZ), -1);
 });
 
 test('неделя с понедельника', () => {

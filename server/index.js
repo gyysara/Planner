@@ -6,6 +6,7 @@ const { createAuth } = require('./auth');
 const { createUploads } = require('./uploads');
 const { createTelegram } = require('./telegram');
 const { createNotifier } = require('./notify');
+const { loadSecret, createCipher } = require('./secret');
 const { HttpError } = require('./util');
 const { meRouter } = require('./routes/me');
 const { teamRouter } = require('./routes/team');
@@ -38,7 +39,8 @@ function createApp(overrides = {}) {
   const config = loadConfig(overrides);
   const db = openDb(config.dbPath);
   const uploads = createUploads(config.uploadDir);
-  const telegram = overrides.telegram || createTelegram({ db, token: config.telegramToken, username: config.telegramUsername });
+  const secret = loadSecret(config);
+  const telegram = createTelegram({ db, cipher: secret ? createCipher(secret) : null, fetchImpl: overrides.telegramFetch, polling: !overrides.telegramFetch });
   const notifier = createNotifier({ db, config, telegram });
   const auth = createAuth({ db, config });
   const deps = { db, config, uploads, telegram, notifier };
@@ -81,7 +83,6 @@ function createApp(overrides = {}) {
 if (require.main === module) {
   const { app, config, notifier, telegram } = createApp();
   if (!config.inviteCode) console.warn('ВНИМАНИЕ: INVITE_CODE не задан — регистрация закрыта.');
-  if (!telegram.enabled) console.warn('Telegram отключён: не задан TELEGRAM_BOT_TOKEN.');
   telegram.start();
   notifier.start();
   app.listen(config.port, () => console.log(`Планнер запущен на порту ${config.port}`));

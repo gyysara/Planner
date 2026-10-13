@@ -13,8 +13,8 @@ function loadConfig(overrides = {}) {
     uploadDir: overrides.uploadDir || path.join(dataDir, 'uploads'),
     tz: env.TZ_NAME || 'Europe/Minsk',
     inviteCode: overrides.inviteCode !== undefined ? overrides.inviteCode : (env.INVITE_CODE || ''),
-    telegramToken: overrides.telegramToken !== undefined ? overrides.telegramToken : (env.TELEGRAM_BOT_TOKEN || ''),
-    telegramUsername: env.TELEGRAM_BOT_USERNAME || '',
+    // Ключ шифрования для ключей Telegram-ботов пользователей
+    secretKey: overrides.secretKey !== undefined ? overrides.secretKey : (env.SECRET_KEY || ''),
     defaultNotifyHour: 10,
     sessionDays: 30,
     root,

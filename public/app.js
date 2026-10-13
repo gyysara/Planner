@@ -276,11 +276,12 @@
   function taskCard(t, showTime) {
     const stage = D.borderStage(t, new Date(), state.tz);
     return el('div', {
-      class: `card due-${stage}${t.status === 'done' ? ' done' : ''}`, vars: projectVars(t.project.color),
+      class: `card due-${stage}${t.status === 'done' ? ' done' : ''}`, vars: { '--pc': t.project.color },
       role: 'button', tabindex: 0, title: `${t.title} — ${t.project.name}`,
       onclick: () => openTask(t.id), onkeydown: (e) => { if (e.key === 'Enter') openTask(t.id); },
     },
     stage === 'overdue' && el('span', { class: 'warn', 'aria-label': 'Просрочено' }, '⚠'),
+    el('div', { class: 'tag' }, t.project.name),
     el('div', { class: 't' }, showTime && el('span', { class: 'time' }, fmtTime(t.deadline) + ' '), t.title),
     el('div', { class: 'who' }, el('img', { class: 'avatar sm', src: t.assignee.avatar, alt: '' }), t.assignee.name));
   }
@@ -590,22 +591,98 @@
         el('div', { class: 'muted', style: { marginBottom: '10px' } }, 'Мелодия играет только при всплывающем уведомлении.'),
         soundList,
         el('label', { style: { marginTop: '12px' } }, 'Загрузить свою мелодию (MP3, WAV, OGG до 5 МБ)', soundInput)),
-      el('div', { class: 'panel' },
-        el('h2', {}, 'Напоминания'),
-        el('label', {}, `Во сколько присылать напоминания за 5 дней, за 2 дня и в день дедлайна (${state.tz})`, hourSel),
-        el('div', { class: 'muted' }, 'О новой задаче уведомление приходит сразу.'),
-        el('div', { style: { marginTop: '14px' } }, `Уведомления браузера: ${permText}. `,
-          perm === 'default' && el('button', { class: 'btn-small btn-neon', onclick: async () => { await Notification.requestPermission(); renderShell(); } }, 'Разрешить'))),
-      el('div', { class: 'panel' },
-        el('h2', {}, 'Telegram'),
-        !s.telegramEnabled ? el('div', { class: 'muted' }, 'Telegram-бот ещё не подключён на сервере. Его настраивает владелец планнера.')
-          : s.telegramLinked ? el('div', {}, '✅ Telegram подключён. ',
-            el('button', { class: 'btn-small btn-danger', onclick: async () => { apply(await api('DELETE', '/api/me/telegram')); renderShell(); } }, 'Отключить'))
-            : el('div', {},
-              el('div', { class: 'muted', style: { marginBottom: '10px' } }, 'Нажмите кнопку, откройте бота и нажмите «Start». Обновите страницу после подтверждения.'),
-              el('button', { class: 'btn-gold', onclick: async () => {
-                try { const { url } = await api('POST', '/api/me/telegram-link'); window.open(url, '_blank', 'noopener'); } catch (e) { show(e.message); }
-              } }, 'Подключить Telegram')))));
+      notifyPanel(s, hourSel, perm, permText, apply, show),
+      telegramPanel(s, apply, show)));
+  }
+
+  // Когда присылать уведомления — только то, что выбрал сам пользователь
+  function notifyPanel(s, hourSel, perm, permText, apply, show) {
+    const DAY_OPTIONS = [[5, 'За 5 дней'], [4, 'За 4 дня'], [3, 'За 3 дня'], [1, 'За 1 день'], [0, 'В день дедлайна']];
+    const hint = el('div', { class: 'muted', style: { marginTop: '8px' } });
+    const box = (id, label, checked, onchange) => el('label', { class: 'check-row' },
+      el('input', { type: 'checkbox', id, checked, onchange }), el('span', {}, label));
+    const days = new Set(s.notifyDays);
+    const updateHint = () => {
+      const any = state.settings.notifyOnCreate || state.settings.notifyOnDone || state.settings.notifyDays.length;
+      hint.textContent = any ? '' : 'Уведомления выключены: ничего не выбрано.';
+    };
+    const save = async (patch) => {
+      try { apply(await api('PATCH', '/api/me/settings', patch)); show('Сохранено', true); updateHint(); } catch (e) { show(e.message); }
+    };
+    const panel = el('div', { class: 'panel' },
+      el('h2', {}, 'Когда присылать уведомления'),
+      el('div', { class: 'muted', style: { marginBottom: '10px' } }, 'Отметьте всё, что нужно. Уведомления приходят всплывающим окном со звуком и в ваш Telegram, если он подключён.'),
+      el('div', { class: 'check-group' },
+        box('n-create', 'Когда мне ставят задачу', s.notifyOnCreate, (e) => save({ notifyOnCreate: e.target.checked })),
+        box('n-done', 'Когда мою задачу завершили', s.notifyOnDone, (e) => save({ notifyOnDone: e.target.checked }))),
+      el('div', { class: 'muted', style: { margin: '12px 0 6px' } }, 'Напоминания о дедлайне'),
+      el('div', { class: 'check-group' }, DAY_OPTIONS.map(([d, label]) => box('n-day-' + d, label, days.has(d), (e) => {
+        if (e.target.checked) days.add(d); else days.delete(d);
+        save({ notifyDays: [...days] });
+      }))),
+      el('label', { style: { marginTop: '12px' } }, `Во сколько присылать напоминания (${state.tz})`, hourSel),
+      hint,
+      el('div', { style: { marginTop: '10px' } }, `Системные уведомления браузера: ${permText}. `,
+        perm === 'default' && el('button', { class: 'btn-small', onclick: async () => { await Notification.requestPermission(); renderShell(); } }, 'Разрешить')));
+    updateHint();
+    return panel;
+  }
+
+  // Свой Telegram-бот: личный или общий на нескольких человек
+  function telegramPanel(s, apply, show) {
+    const tg = s.telegram;
+    const err = el('div', { class: 'error', role: 'alert' });
+    const panel = el('div', { class: 'panel' }, el('h2', {}, 'Telegram'));
+    if (!tg.available) {
+      panel.append(el('div', { class: 'muted' }, 'Подключение Telegram пока недоступно: владелец планнера должен задать SECRET_KEY на сервере.'));
+      return panel;
+    }
+    const linkBlock = (url) => el('div', { class: 'tg-link' },
+      el('div', {}, '1. Откройте бота и нажмите «Start»:'),
+      el('a', { href: url, target: '_blank', rel: 'noopener', class: 'btn btn-gold', style: { display: 'inline-block', marginTop: '6px', textDecoration: 'none' } }, `Открыть @${tg.botUsername || ''}`),
+      el('div', { class: 'muted', style: { marginTop: '6px' } }, '2. Вернитесь сюда и обновите страницу — статус сменится на «подключён».'));
+
+    if (tg.botUsername) {
+      panel.append(el('div', { class: 'item', style: { marginBottom: '12px' } },
+        el('div', { class: 'grow' }, el('b', {}, '@' + tg.botUsername),
+          el('div', { class: tg.linked ? 'ok-text' : 'muted' }, tg.linked ? '✅ Подключён, уведомления приходят сюда' : 'Ждём, когда вы нажмёте «Start» в боте'))));
+      const actions = el('div', { class: 'actions', style: { justifyContent: 'flex-start' } });
+      if (tg.linked) {
+        actions.append(el('button', { class: 'btn-small', onclick: async () => {
+          try { await api('POST', '/api/me/telegram/test'); show('Тестовое сообщение отправлено', true); } catch (e) { show(e.message); }
+        } }, 'Отправить тест'));
+      } else {
+        actions.append(el('button', { class: 'btn-small', onclick: async () => {
+          try { state.tgLinkUrl = (await api('POST', '/api/me/telegram/link')).url; renderShell(); } catch (e) { err.textContent = e.message; }
+        } }, 'Получить новую ссылку'));
+        if (state.tgLinkUrl) panel.append(linkBlock(state.tgLinkUrl));
+      }
+      actions.append(el('button', { class: 'btn-small btn-danger', onclick: async () => {
+        try { apply(await api('DELETE', '/api/me/telegram')); renderShell(); } catch (e) { show(e.message); }
+      } }, 'Отключить'));
+      panel.append(actions, err);
+      return panel;
+    }
+
+    const input = el('input', { type: 'password', id: 'tg-token', autocomplete: 'off', placeholder: '123456789:AA…', required: true });
+    panel.append(
+      el('div', { class: 'muted', style: { marginBottom: '10px' } },
+        'Создайте бота в @BotFather (команда /newbot) и вставьте его ключ. Можно указать общий ключ — один бот на несколько человек: каждый получит только свои уведомления.'),
+      el('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        try {
+          const r = await api('PUT', '/api/me/telegram', { token: input.value.trim() });
+          apply(r);
+          input.value = '';
+          state.tgLinkUrl = r.url;
+          renderShell();
+        } catch (e2) { err.textContent = e2.message; }
+      } },
+      el('label', { for: 'tg-token' }, 'Ключ бота', input),
+      err,
+      el('button', { type: 'submit', class: 'btn-gold' }, 'Подключить')));
+    return panel;
   }
 
   // ---------- Уведомления: всплывающее окно + звук ----------
@@ -643,6 +720,10 @@
   }
 
   const MAX_TOASTS = 3;
+  const TOAST_HEAD = {
+    created: ['🔔', 'Новая задача'], assigned: ['👤', 'Вам назначена задача'],
+    reminder: ['⏰', 'Напоминание о дедлайне'], done: ['✅', 'Задача завершена'],
+  };
   let hiddenToasts = [];
 
   function showToast(n) {
@@ -652,11 +733,15 @@
       return;
     }
     const markRead = () => { api('POST', `/api/notifications/${n.id}/read`).catch(() => {}); setTimeout(showHidden, 0); };
+    const head = TOAST_HEAD[n.kind] || TOAST_HEAD[n.kind.startsWith('reminder') ? 'reminder' : 'created'];
+    const body = n.message.replace(/^\S+\s/, ''); // без эмодзи в начале
     const toast = el('div', { class: 'toast', role: 'alert' },
-      el('div', { class: 'msg' }, n.message),
+      el('div', { class: 'row' },
+        el('div', { class: 'ic', 'aria-hidden': 'true' }, n.kind === 'reminder0' ? '🔥' : head[0]),
+        el('div', {}, el('div', { class: 'tt' }, n.kind === 'reminder0' ? 'Сегодня дедлайн' : head[1]), el('div', { class: 'msg' }, body))),
       el('div', { class: 'actions' },
-        n.taskId && el('button', { class: 'btn-small btn-neon', onclick: () => { markRead(); toast.remove(); openTask(n.taskId); } }, 'Открыть задачу'),
-        el('button', { class: 'btn-small btn-gold', onclick: () => { markRead(); toast.remove(); } }, 'OK')));
+        n.taskId && el('button', { class: 'btn-small', onclick: () => { markRead(); toast.remove(); openTask(n.taskId); } }, 'Открыть задачу'),
+        el('button', { class: 'btn-small main', onclick: () => { markRead(); toast.remove(); } }, 'OK')));
     const more = $toasts.querySelector('.toast.more');
     $toasts.insertBefore(toast, more);
   }

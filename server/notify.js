@@ -1,8 +1,13 @@
-// Уведомления: при создании задачи сразу; за 5 дней, за 2 дня и в день дедлайна —
-// в выбранный пользователем час (по умолчанию 10:00 по Минску).
-// Получатели: исполнитель и автор задачи. Канал: браузер (таблица notifications) + Telegram.
+// Уведомления приходят только по выбору пользователя (Настройки):
+//  — «когда мне ставят задачу», «когда мою задачу завершили»;
+//  — за 5, 4, 3, 1 день и в день дедлайна — в выбранный пользователем час (по умолчанию 10:00 по Минску).
+// По умолчанию ничего не выбрано. Каналы: браузер (таблица notifications) + личный Telegram-бот.
 const Deadline = require('../shared/deadline');
 const { TASK_SELECT } = require('./access');
+
+// За сколько дней можно выбрать напоминание (0 — в день дедлайна)
+const REMINDER_DAYS = [5, 4, 3, 1, 0];
+const parseDays = (str) => String(str || '').split(',').filter((x) => x !== '').map(Number).filter((n) => REMINDER_DAYS.includes(n));
 
 function createNotifier({ db, config, telegram }) {
   const fmtDeadline = (iso) => new Intl.DateTimeFormat('ru-RU', {
@@ -19,35 +24,36 @@ function createNotifier({ db, config, telegram }) {
   function deliver(user, task, kind, message) {
     db.prepare('INSERT INTO notifications (user_id, task_id, kind, message) VALUES (?, ?, ?, ?)')
       .run(user.id, task.id, kind, message);
-    if (user.tg_chat_id) telegram.send(user.tg_chat_id, message);
+    telegram.send(user, message);
   }
+
+  const userById = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
   // Коротко, без описания: название, проект, срок
   const line = (t) => `«${t.title}»\nПроект: ${t.project_name}\nСрок: ${fmtDeadline(t.deadline)}\nИсполнитель: ${t.assignee_name}`;
 
-  function taskCreated(taskId, now = new Date()) {
+  // Новая задача — только исполнителю, если её поставил другой человек и он включил эту галочку
+  function taskCreated(taskId) {
     const task = loadTask(taskId);
-    const stage = Deadline.reminderStage(task, now, config.tz);
-    for (const u of recipients(task)) {
-      const msg = u.id === task.assignee_id && u.id !== task.author_id
-        ? `🆕 Вам новая задача от ${task.author_name}: ${line(task)}`
-        : `🆕 Новая задача: ${line(task)}`;
-      deliver(u, task, 'created', msg);
-      // Уведомление о создании уже сообщает срок — текущую стадию повторно не шлём
-      if (stage !== null) markSent(task.id, u.id, stage);
+    const u = userById(task.assignee_id);
+    if (u && u.id !== task.author_id && u.notify_on_create) {
+      deliver(u, task, 'created', `🆕 Вам новая задача от ${task.author_name}: ${line(task)}`);
     }
   }
 
   function taskReassigned(taskId) {
     const task = loadTask(taskId);
-    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(task.assignee_id);
-    if (u && u.id !== task.author_id) deliver(u, task, 'assigned', `👤 Вам назначена задача: ${line(task)}`);
+    const u = userById(task.assignee_id);
+    if (u && u.id !== task.author_id && u.notify_on_create) {
+      deliver(u, task, 'assigned', `👤 Вам назначена задача: ${line(task)}`);
+    }
   }
 
+  // Завершение — автору, если завершил другой человек и автор включил эту галочку
   function taskDone(taskId, byUserId) {
     const task = loadTask(taskId);
-    for (const u of recipients(task)) {
-      if (u.id === byUserId) continue;
+    const u = userById(task.author_id);
+    if (u && u.id !== byUserId && u.notify_on_done) {
       deliver(u, task, 'done', `✅ Задача завершена: «${task.title}»\nРезультат: ${task.result}`);
     }
   }
@@ -56,32 +62,24 @@ function createNotifier({ db, config, telegram }) {
     db.prepare('DELETE FROM reminders_sent WHERE task_id = ?').run(taskId);
   }
 
-  function markSent(taskId, userId, stage) {
-    db.prepare('INSERT OR IGNORE INTO reminders_sent (task_id, user_id, stage) VALUES (?, ?, ?)').run(taskId, userId, stage);
-  }
+  const reminderText = (d, t) => (d === 0
+    ? `🔥 Сегодня дедлайн: ${line(t)}`
+    : `⏰ До дедлайна ${d} ${d === 1 ? 'день' : d < 5 ? 'дня' : 'дней'}: ${line(t)}`);
 
-  const reminderText = (stage, t) => {
-    if (stage === 0) return `🔥 Сегодня дедлайн: ${line(t)}`;
-    if (stage === 2) return `🟥 До дедлайна 2 дня или меньше: ${line(t)}`;
-    return `🟨 До дедлайна 5 дней или меньше: ${line(t)}`;
-  };
-
-  // Вызывается планировщиком раз в минуту
+  // Вызывается планировщиком раз в минуту. Пропущенные дни задним числом не догоняем.
   function runReminders(now = new Date()) {
     const hour = Deadline.zoned(now, config.tz).hour;
-    const since = new Date(now.getTime() - 2 * 86400000).toISOString();
+    const since = new Date(now.getTime() - 86400000).toISOString();
     const tasks = db.prepare(`${TASK_SELECT} WHERE t.status != 'done' AND t.deadline >= ?`).all(since);
     let sent = 0;
     for (const task of tasks) {
-      const stage = Deadline.reminderStage(task, now, config.tz);
-      if (stage === null) continue;
+      const d = Deadline.daysLeft(task.deadline, now, config.tz);
+      if (!REMINDER_DAYS.includes(d)) continue;
       for (const u of recipients(task)) {
-        // Уже отправлена эта или более срочная стадия
-        const done = db.prepare('SELECT 1 FROM reminders_sent WHERE task_id = ? AND user_id = ? AND stage <= ?')
-          .get(task.id, u.id, stage);
-        if (done || hour < u.notify_hour) continue;
-        markSent(task.id, u.id, stage);
-        deliver(u, task, `reminder${stage}`, reminderText(stage, task));
+        if (hour < u.notify_hour || !parseDays(u.notify_days).includes(d)) continue;
+        const info = db.prepare('INSERT OR IGNORE INTO reminders_sent (task_id, user_id, stage) VALUES (?, ?, ?)').run(task.id, u.id, d);
+        if (!info.changes) continue; // уже отправляли
+        deliver(u, task, `reminder${d}`, reminderText(d, task));
         sent++;
       }
     }
@@ -96,4 +94,4 @@ function createNotifier({ db, config, telegram }) {
   };
 }
 
-module.exports = { createNotifier };
+module.exports = { createNotifier, REMINDER_DAYS, parseDays };

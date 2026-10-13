@@ -26,18 +26,24 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker ubuntu && newgrp docker
 git clone https://github.com/gyysara/Planner.git planner && cd planner
 cp .env.example .env
-nano .env        # DOMAIN, INVITE_CODE, (позже) TELEGRAM_BOT_TOKEN и TELEGRAM_BOT_USERNAME
+openssl rand -base64 32   # результат вставьте в SECRET_KEY
+nano .env        # DOMAIN, INVITE_CODE, SECRET_KEY
 chmod 600 .env
 docker compose up -d --build
 ```
 
 Через 1–2 минуты откройте `https://ваш-домен` — должна появиться форма входа.
 
-## 4. Telegram-бот
-1. В Telegram откройте **@BotFather** → `/newbot`, задайте имя и username бота.
-2. Скопируйте ключ (token) и username в `.env` на сервере — **только туда**, не в код и не в чат.
-3. Перезапустите: `docker compose up -d`.
-4. Каждый пользователь в планнере: **Настройки → Подключить Telegram → Start** в боте.
+## 4. Telegram
+Общего бота на сервере нет: каждый пользователь подключает свой.
+1. В Telegram откройте **@BotFather** → `/newbot`, задайте имя и username бота, скопируйте ключ (token).
+   Один бот можно сделать общим для команды — тогда ключ вставляют все, кто хочет им пользоваться.
+2. В планнере: **Настройки → Telegram** → вставить ключ → **Подключить** → открыть бота по ссылке → **Start**.
+3. Нажмите «Отправить тест», чтобы проверить.
+4. Там же отметьте, какие уведомления нужны: по умолчанию не приходит ничего.
+
+Ключи ботов хранятся в базе зашифрованными ключом `SECRET_KEY`. Не меняйте `SECRET_KEY` после запуска.
+Один бот не должен одновременно использоваться другой программой с webhook — иначе Telegram не отдаст сообщения планнеру.
 
 ## 5. Обновление и обслуживание
 ```bash

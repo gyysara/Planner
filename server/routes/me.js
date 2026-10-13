@@ -1,8 +1,8 @@
-const crypto = require('node:crypto');
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const { HttpError, publicUser } = require('../util');
+const { REMINDER_DAYS, parseDays } = require('../notify');
 
 const SOUND_TITLES = {
   'alarm-classic.wav': 'Классический будильник',
@@ -35,8 +35,10 @@ function meRouter({ db, config, uploads, telegram }) {
         sound: u.sound,
         soundUrl: soundUrl(u.sound),
         notifyHour: u.notify_hour,
-        telegramLinked: !!u.tg_chat_id,
-        telegramEnabled: telegram.enabled,
+        notifyOnCreate: !!u.notify_on_create,
+        notifyOnDone: !!u.notify_on_done,
+        notifyDays: parseDays(u.notify_days),
+        telegram: telegram.status(u),
       },
       config: { tz: config.tz },
     };
@@ -64,7 +66,16 @@ function meRouter({ db, config, uploads, telegram }) {
   });
 
   r.patch('/me/settings', (req, res) => {
-    const { sound, notifyHour } = req.body || {};
+    const { sound, notifyHour, notifyOnCreate, notifyOnDone, notifyDays } = req.body || {};
+    const set = (col, val) => { db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(val, req.user.id); req.user[col] = val; };
+    if (notifyOnCreate !== undefined) set('notify_on_create', notifyOnCreate ? 1 : 0);
+    if (notifyOnDone !== undefined) set('notify_on_done', notifyOnDone ? 1 : 0);
+    if (notifyDays !== undefined) {
+      if (!Array.isArray(notifyDays) || !notifyDays.every((d) => REMINDER_DAYS.includes(d))) {
+        throw new HttpError(400, 'Дни напоминаний: 5, 4, 3, 1 или 0 (день дедлайна)');
+      }
+      set('notify_days', [...new Set(notifyDays)].sort((a, b) => b - a).join(','));
+    }
     if (sound !== undefined) {
       const ok = defaultSounds(config.root).some((s) => s.id === sound)
         || (sound === req.user.sound && sound.startsWith('custom:'));
@@ -83,19 +94,31 @@ function meRouter({ db, config, uploads, telegram }) {
     res.json(me(req));
   });
 
-  r.post('/me/telegram-link', (req, res) => {
-    if (!telegram.enabled) throw new HttpError(503, 'Telegram-бот не настроен на сервере');
-    const code = crypto.randomBytes(16).toString('hex');
-    db.prepare('UPDATE users SET tg_link_code = ? WHERE id = ?').run(code, req.user.id);
-    const url = telegram.linkUrl(code);
-    if (!url) throw new HttpError(503, 'Не удалось получить имя бота');
-    res.json({ url });
+  // Подключить свой (или общий) Telegram-бот: ключ проверяется и хранится зашифрованным
+  r.put('/me/telegram', async (req, res, next) => {
+    try {
+      const link = await telegram.connect(req.user, (req.body || {}).token);
+      res.json({ ...link, ...me({ user: db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) }) });
+    } catch (e) { next(e); }
+  });
+
+  // Новая ссылка для /start (например, если открыли не тот аккаунт Telegram)
+  r.post('/me/telegram/link', (req, res) => {
+    res.json(telegram.relink(req.user));
+  });
+
+  r.post('/me/telegram/test', async (req, res, next) => {
+    try {
+      if (!req.user.tg_chat_id) throw new HttpError(400, 'Сначала откройте бота по ссылке и нажмите Start');
+      const ok = await telegram.send(req.user, '✅ Планнер подключён. Сюда будут приходить выбранные вами уведомления.');
+      if (!ok) throw new HttpError(502, 'Telegram не принял сообщение. Проверьте, что бот не заблокирован');
+      res.json({ ok: true });
+    } catch (e) { next(e); }
   });
 
   r.delete('/me/telegram', (req, res) => {
-    db.prepare('UPDATE users SET tg_chat_id = NULL, tg_link_code = NULL WHERE id = ?').run(req.user.id);
-    req.user.tg_chat_id = null;
-    res.json(me(req));
+    telegram.disconnect(req.user);
+    res.json(me({ user: db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) }));
   });
 
   return r;

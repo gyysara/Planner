@@ -67,11 +67,29 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, read_at);
 `;
 
+// Колонки, добавленные после первой версии: [таблица, колонка, определение]
+const MIGRATIONS = [
+  ['users', 'notify_on_create', 'INTEGER NOT NULL DEFAULT 0'],
+  ['users', 'notify_on_done', 'INTEGER NOT NULL DEFAULT 0'],
+  ['users', 'notify_days', "TEXT NOT NULL DEFAULT ''"],
+  ['users', 'tg_token_enc', 'TEXT'],
+  ['users', 'tg_token_hash', 'TEXT'],
+  ['users', 'tg_bot_username', 'TEXT'],
+];
+
+function migrate(db) {
+  for (const [table, column, def] of MIGRATIONS) {
+    const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+  }
+}
+
 function openDb(dbPath) {
   if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 

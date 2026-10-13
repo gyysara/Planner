@@ -155,7 +155,8 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .day.today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .day .num { font-size: 12px; color: var(--muted); }
 .day.today .num { color: var(--accent-hi); font-weight: 700; }
-.day .cards { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding: 4px; margin: -4px; }
+/* Отступы внутри списка, чтобы кружок ⚠ в углу карточки не обрезался */
+.day .cards { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding: 11px 8px 4px; margin: -4px -6px -4px; }
 
 .week { display: grid; grid-template-columns: 56px repeat(7, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg-2); }
 .week .wh { padding: 10px 8px; border-bottom: 1px solid var(--line); background: var(--panel); text-align: center; }
@@ -163,7 +164,7 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .week .wh.today { color: var(--accent-hi); box-shadow: 0 -2px 0 var(--accent) inset; }
 .week-body { grid-column: 1 / -1; display: grid; grid-template-columns: 56px repeat(7, minmax(0, 1fr)); max-height: calc(100vh - 230px); overflow-y: auto; }
 .hour-label { font-size: 11px; color: var(--muted); text-align: right; padding: 4px 6px 0 0; border-top: 1px solid var(--line); }
-.slot { min-height: 58px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.slot { min-height: 58px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); padding: 10px 9px 6px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
 .slot:hover { background: var(--accent-soft); }
 .slot.today { background: rgba(61, 139, 253, .04); }
 
@@ -181,7 +182,7 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .card .tag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--pc); flex: none; }
 .card .t { font-weight: 650; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .card .who { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--card-ink-2); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card .time { color: var(--card-ink-2); font-variant-numeric: tabular-nums; }
+.card .time { color: var(--card-ink); font-weight: 800; font-variant-numeric: tabular-nums; }
 .week .card { font-size: 13.5px; padding: 11px 10px 8px; }
 .week .card .who { font-size: 12.5px; }
 .week .avatar.sm { width: 22px; height: 22px; }
@@ -192,6 +193,7 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
   position: absolute; top: -9px; right: -7px; background: var(--due-overdue); color: #fff; border-radius: 50%;
   width: 22px; height: 22px; display: grid; place-items: center; font-size: 12px; border: 2px solid #ff7b7b;
 }
+.card .warn.soon { background: var(--due-red); border-color: #ffb3b3; }
 .card.done { --card-bg: #c9ccd5; opacity: .72; box-shadow: none; }
 .card.done .t::before { content: "✓ "; }
 

@@ -281,6 +281,7 @@
       onclick: () => openTask(t.id), onkeydown: (e) => { if (e.key === 'Enter') openTask(t.id); },
     },
     stage === 'overdue' && el('span', { class: 'warn', 'aria-label': 'Просрочено' }, '⚠'),
+    stage === 'red' && el('span', { class: 'warn soon', 'aria-label': 'До дедлайна 2 дня или меньше' }, '⚠'),
     el('div', { class: 'tag' }, t.project.name),
     el('div', { class: 't' }, showTime && el('span', { class: 'time' }, fmtTime(t.deadline) + ' '), t.title),
     el('div', { class: 'who' }, el('img', { class: 'avatar sm', src: t.assignee.avatar, alt: '' }), t.assignee.name));
